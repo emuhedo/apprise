@@ -32,6 +32,7 @@ from ..common import NotifyFormat
 from ..common import NOTIFY_FORMATS
 from ..common import OverflowMode
 from ..common import OVERFLOW_MODES
+from ..AppriseLocale import gettext_lazy as _
 
 
 class NotifyBase(URLBase):
@@ -77,6 +78,74 @@ class NotifyBase(URLBase):
     # title so that it can be placed into the body. The default is to just
     # use a <b> tag.  The below causes the <b>title</b> to get generated:
     default_html_tag_id = 'b'
+
+    # Define a default set of template arguments used for dynamically building
+    # details about our individual plugins for developers.
+
+    # Define object templates
+    templates = ()
+
+    # Provides a mapping of tokens, certain entries are fixed and automatically
+    # configured if found (such as schema, host, user, pass, and port)
+    template_tokens = {}
+
+    # Here is where we define all of the arguments we accept on the url
+    # such as: schema://whatever/?overflow=upstream&format=text
+    # These act the same way as tokens except they are optional and/or
+    # have default values set if mandatory. This rule must be followed
+    template_args = {
+        'overflow': {
+            'name': _('Overflow Mode'),
+            'type': 'choice:string',
+            'values': OVERFLOW_MODES,
+            # Provide a default
+            'default': overflow_mode,
+            # look up default using the following parent class value at
+            # runtime. The variable name identified here (in this case
+            # overflow_mode) is checked and it's result is placed over-top of
+            # the 'default'. This is done because once a parent class inherits
+            # this one, the overflow_mode already set as a default 'could' be
+            # potentially over-ridden and changed to a different value.
+            '_lookup_default': 'overflow_mode',
+        },
+        'format': {
+            'name': _('Notify Format'),
+            'type': 'choice:string',
+            'values': NOTIFY_FORMATS,
+            # Provide a default
+            'default': notify_format,
+            # look up default using the following parent class value at
+            # runtime.
+            '_lookup_default': 'notify_format',
+        },
+        'verify': {
+            'name': _('Verify SSL'),
+            # SSL Certificate Authority Verification
+            'type': 'choice:bool',
+            # Provide a default
+            'default': URLBase.verify_certificate,
+            # look up default using the following parent class value at
+            # runtime.
+            '_lookup_default': 'verify_certificate',
+        },
+        'image': {
+            'name': _('Use Image'),
+            'type': 'choice:bool',
+            # Provide a default
+            'default': True,
+            # Base the existance of this key/value entry on the lookup
+            # of this class value at runtime. Hence:
+            #     if not NotifyObject.image_size
+            #         del this_entry
+            #
+            '_exists_if': 'image_size',
+        },
+    }
+
+    # kwargs are dynamically built because a prefix causes us to parse the
+    # content slightly differently.  In this case we support +/- header
+    # kwarg entries. The Prefix is the key
+    template_kwargs = {}
 
     def __init__(self, **kwargs):
         """

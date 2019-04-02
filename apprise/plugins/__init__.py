@@ -25,6 +25,7 @@
 
 import six
 import re
+import copy
 
 from os import listdir
 from os.path import dirname
@@ -45,6 +46,7 @@ from ..common import NotifyImageSize
 from ..common import NOTIFY_IMAGE_SIZES
 from ..common import NotifyType
 from ..common import NOTIFY_TYPES
+from ..utils import parse_list
 
 # Maintains a mapping of all of the Notification services
 SCHEMA_MAP = {}
@@ -149,3 +151,176 @@ def __load_matrix(path=abspath(dirname(__file__)), name='apprise.plugins'):
 
 # Dynamically build our schema base
 __load_matrix()
+
+
+def details(plugin):
+    """
+    Provides templates that can be used by developers to build URLs
+    dynamically.
+
+    If a list of templates is provided, then they will be used over
+    the default value.
+
+    If a list of tokens are provided, then they will over-ride any
+    additional settings built from this script and/or will be appended
+    to them afterwards.
+    """
+
+    # Our unique list of parsing will be based on the provided templates
+    # if none are provided we will use our own
+    templates = tuple(plugin.templates)
+
+    # The syntax is simple
+    #   {
+    #       # The token_name must tie back to an entry found in the
+    #       # templates list.
+    #       'token_name': {
+    #
+    #            # types can be 'string', 'int', 'choice', 'list, 'float'
+    #            # both choice and list may additionally have a : identify
+    #            # what the list/choice type is comprised of; the default
+    #            # is string.
+    #            'type': 'choice:string',
+    #
+    #            # values will only exist the type must be a fixed
+    #            # list of inputs (generated from type choice for example)
+    #            'values': [ 'http', 'https' ],
+    #
+    #            # Identifies if the entry specified is required or not
+    #            'required': True,
+    #
+    #            # Identify a default value
+    #            'default': 'http',
+    #
+    #            # Optional Verification Entries min and max are for floats
+    #            # and/or integers
+    #            'min': 4,
+    #            'max': 5,
+    #
+    #            # A list will always identify a delimiter.  If this is
+    #            # part of a path, this may be a '/', or it could be a
+    #            # comma and/or space. delimiters are always in a list
+    #            #  eg (if space and/or comma is a delimiter the entry
+    #            #      would look like: 'delim': [',' , ' ' ]
+    #            'delim': None,
+    #
+    #            # Advise developers to consider the potential sensitivity
+    #            # of this field owned by the user. This is for passwords,
+    #            # and api keys, etc...
+    #            'private': False,
+    #       },
+    #   }
+
+    # Template tokens identify the arguments required to initialize the
+    # plugin itself.  It identifies all of the tokens and provides some
+    # details on their use.  Each token defined should in some way map
+    # back to at least one URL {token} defined in the templates
+
+    # Since we nest a dictionary within a dictionary, a simple copy isn't
+    # enough. a deepcopy allows us to manipulate this object in this
+    # funtion without obstructing the original.
+    template_tokens = copy.deepcopy(plugin.template_tokens)
+
+    # Arguments and/or Options either have a default value and/or are
+    # optional to be set.
+    #
+    # Since we nest a dictionary within a dictionary, a simple copy isn't
+    # enough. a deepcopy allows us to manipulate this object in this
+    # funtion without obstructing the original.
+    template_args = copy.deepcopy(plugin.template_args)
+
+    # Our template keyword arguments ?+key=value&-key=value
+    # Basically the user provides both the key and the value. this is only
+    # possibly by identifying the key prefix required for them to be
+    # interpreted hence the +/- keys are built into apprise by default for easy
+    # reference. In these cases, entry might look like '+' being the prefix:
+    #   {
+    #      '+': {
+    #          # types can be 'string', 'int', 'list, 'float'
+    #          # both choice and list may additionally have a : identify
+    #          # what the list/choice type is comprised of; the default
+    #          # is string.
+    #          'type': 'string',
+    #
+    #          # A list will always identify a delimiter.  If this is
+    #          # part of a path, this may be a '/', or it could be a
+    #          # comma and/or space. delimiters are always in a list
+    #          #  eg (if space and/or comma is a delimiter the entry
+    #          #      would look like: 'delim': [',' , ' ' ]
+    #          'delim': None,
+    #       }
+    #   }
+    #
+    # Since we nest a dictionary within a dictionary, a simple copy isn't
+    # enough. a deepcopy allows us to manipulate this object in this
+    # funtion without obstructing the original.
+    template_kwargs = copy.deepcopy(plugin.template_kwargs)
+
+    # TODO: Create test that extracts all of the tokens from all of the
+    #       urls defined in the template and checks that they map up
+    #       correctly with a look up value.
+    #           - flag missing entries
+    #           - flag entries that exist in the list but not in
+    #             the template url
+
+    # We automatically create a schema entry
+    template_tokens['schema'] = {
+        'name': _('Schema'),
+        'type': 'choice:string',
+        'required': True,
+        'values': parse_list(plugin.secure_protocol, plugin.protocol)
+    }
+
+    # The following sets defaults if they aren't set. This simplifies their
+    # declaration in classes
+    for key in template_tokens.keys():
+        if 'required' not in template_tokens[key]:
+            # Default required is False
+            template_tokens[key]['required'] = False
+
+        if 'values' not in template_tokens[key]:
+            # Values defaults to None
+            template_tokens[key]['values'] = None
+
+        if 'private' not in template_tokens[key]:
+            # Private flag defaults to False if not set
+            template_tokens[key]['private'] = False
+
+        if 'max' in template_tokens[key]:
+            if 'min' not in template_tokens[key]:
+                template_tokens[key]['min'] = 0
+
+        if 'list' in template_tokens[key]:
+            # Default list delimiter (if not otherwise specified
+            if 'delim' not in template_tokens[key]:
+                template_tokens[key]['delim'] = [',', ' ']
+
+    # Argument/Option Handling
+    for key in list(template_args.keys()):
+
+        # _lookup_default looks up what the default value
+        if '_lookup_default' in template_args[key]:
+            template_args[key]['default'] = getattr(
+                plugin, template_args[key]['_lookup_default'])
+
+            # Tidy as we don't want to pass this along in response
+            del template_args[key]['_lookup_default']
+
+        # _exists_if causes the argument to only exist IF after checking
+        # the return of an internal variable requiring a check
+        if '_exists_if' in template_args[key]:
+            if not getattr(plugin,
+                           template_args[key]['_exists_if']):
+                # Remove entire object
+                del template_args[key]
+
+            else:
+                # We only nee to remove this key
+                del template_args[key]['_exists_if']
+
+    return {
+        'templates': templates,
+        'tokens': template_tokens,
+        'args': template_args,
+        'kwargs': template_kwargs,
+    }

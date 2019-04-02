@@ -30,6 +30,7 @@ from json import dumps
 from .NotifyBase import NotifyBase
 from ..common import NotifyImageSize
 from ..common import NotifyType
+from ..AppriseLocale import gettext_lazy as _
 
 
 class NotifyJSON(NotifyBase):
@@ -55,6 +56,51 @@ class NotifyJSON(NotifyBase):
     # Disable throttle rate for JSON requests since they are normally
     # local anyway
     request_rate_per_sec = 0
+
+    # Define object templates
+    templates = (
+        '{schema}://{host}',
+        '{schema}://{host}:{port}',
+        '{schema}://{user}@{host}:{port}',
+        '{schema}://{user}:{pass}@{host}:{port}',
+    )
+
+    # Define our tokens; these are the minimum tokens required required to
+    # be passed into this function (as arguments). The syntax appends any
+    # previously defined in the base package and builds onto them
+    template_tokens = dict(NotifyBase.template_tokens, **{
+        'host': {
+            'name': _('Hostname'),
+            'type': 'string',
+            'required': True,
+        },
+        'port': {
+            'name': _('Port'),
+            'type': 'int',
+            'min': 1,
+            'max': 65535,
+        },
+        'user': {
+            'name': _('Username'),
+            'type': 'string',
+        },
+        'password': {
+            'name': _('Password'),
+            'type': 'string',
+            'private': True,
+        },
+    })
+
+    # Define any kwargs we're using
+    template_kwargs = {
+        '+': {
+            'name': _('HTTP Header'),
+            'key': '{http_header_name}',
+            'value': {
+                'type': 'string',
+            }
+        },
+    }
 
     def __init__(self, headers=None, **kwargs):
         """

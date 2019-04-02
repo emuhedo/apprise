@@ -28,7 +28,6 @@ import os
 import six
 from markdown import markdown
 from itertools import chain
-
 from .common import NotifyType
 from .common import NotifyFormat
 from .utils import is_exclusive_match
@@ -39,6 +38,7 @@ from .logger import logger
 
 from .AppriseAsset import AppriseAsset
 from .AppriseConfig import AppriseConfig
+from .AppriseLocale import AppriseLocale
 from .config.ConfigBase import ConfigBase
 from .plugins.NotifyBase import NotifyBase
 
@@ -73,6 +73,9 @@ class Apprise(object):
 
         if servers:
             self.add(servers)
+
+        # Initialize our locale object
+        self.locale = AppriseLocale()
 
     @staticmethod
     def instantiate(url, asset=None, tag=None, suppress_exceptions=True):
@@ -335,7 +338,7 @@ class Apprise(object):
 
         return status
 
-    def details(self):
+    def details(self, lang=None):
         """
         Returns the details associated with the Apprise object
 
@@ -370,6 +373,14 @@ class Apprise(object):
             if isinstance(secure_protocols, six.string_types):
                 secure_protocols = (secure_protocols, )
 
+            if not lang:
+                # Simply return our results
+                details = plugins.details(plugin)
+            else:
+                # Emulate the specified language when returning our results
+                with self.locale.lang_at(lang):
+                    details = plugins.details(plugin)
+
             # Build our response object
             response['schemas'].append({
                 'service_name': getattr(plugin, 'service_name', None),
@@ -377,6 +388,7 @@ class Apprise(object):
                 'setup_url': getattr(plugin, 'setup_url', None),
                 'protocols': protocols,
                 'secure_protocols': secure_protocols,
+                'details': details,
             })
 
         return response

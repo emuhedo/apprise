@@ -24,6 +24,7 @@
 # THE SOFTWARE.
 
 from __future__ import print_function
+import re
 import sys
 import six
 import pytest
@@ -40,9 +41,22 @@ from apprise import NotifyType
 from apprise import NotifyFormat
 from apprise import NotifyImageSize
 from apprise import __version__
+from apprise import AppriseLocale
 
 from apprise.plugins import SCHEMA_MAP
 from apprise.plugins import __load_matrix
+from apprise.utils import parse_list
+
+try:
+    # Python v3.4+
+    from importlib import reload
+except ImportError:
+    try:
+        # Python v3.0-v3.3
+        from imp import reload
+    except ImportError:
+        # Python v2.7
+        pass
 
 # Disable logging for a cleaner testing output
 import logging
@@ -688,6 +702,18 @@ def test_apprise_details():
     # Dictionary response
     assert isinstance(details, dict)
 
+    # Details object with language defined:
+    details = a.details(lang='en')
+
+    # Dictionary response
+    assert isinstance(details, dict)
+
+    # Details object with unsupported language:
+    details = a.details(lang='xx')
+
+    # Dictionary response
+    assert isinstance(details, dict)
+
     # Apprise version
     assert 'version' in details
     assert details.get('version') == __version__
@@ -707,10 +733,70 @@ def test_apprise_details():
     assert 'image_url_mask' in details['asset']
     assert 'image_url_logo' in details['asset']
 
-    # All plugins must have a name defined; the below generates
-    # a list of entrys that do not have a string defined.
-    assert(not len([x['service_name'] for x in details['schemas']
-                   if not isinstance(x['service_name'], six.string_types)]))
+    # Valid Type Regular Expression Checker
+    # Case Sensitive and MUST match the following:
+    is_valid_type_re = re.compile(r'(choice:)?(string|bool|int|float)')
+
+    # Valid Schema Entries:
+    valid_schema_keys = (
+        'name', 'private', 'required', 'type', 'values', 'min', 'max',
+        'default', 'list', 'delim',
+    )
+    for entry in details['schemas']:
+        # A Service Name MUST be defined
+        assert 'service_name' in entry
+        assert isinstance(entry['service_name'], six.string_types)
+
+        # At least one schema/protocol MUST be defined
+        assert len(parse_list(
+            entry['protocols'], entry['secure_protocols'])) > 0
+
+        # our details
+        assert 'details' in entry
+        assert isinstance(entry['details'], dict)
+
+        # All schema details should include args
+        for section in ['args', 'tokens']:
+            assert section in entry['details']
+            assert isinstance(entry['details'][section], dict)
+
+            for arg in entry['details'][section].values():
+                # Validate keys (case-sensitive)
+                assert len([key for key in arg.keys()
+                            if key not in valid_schema_keys]) == 0
+
+                # Test our argument
+                assert isinstance(arg, dict)
+
+                # Minimum requirement of an argument
+                assert 'name' in arg
+                assert isinstance(arg['name'], six.string_types)
+                assert 'type' in arg
+                assert isinstance(arg['type'], six.string_types)
+                assert is_valid_type_re.match(arg['type']) is not None
+
+                # Some verification
+                if arg['type'] == 'choice:string':
+                    # Choices require that a values list is provided
+                    assert 'values' in arg
+                    assert isinstance(arg['values'], (list, tuple))
+                    assert len(arg['values']) > 0
+
+                if arg['type'] == 'list':
+                    # Delimiters MUST be defined
+                    assert 'delim' in arg
+                    assert isinstance(arg['delim'], (list, tuple))
+                    assert len(arg['delim']) > 0
+
+
+@mock.patch('gettext.install')
+def test_gettext_init(mock_gettext_install):
+    """
+    API: Mock Gettext init
+    """
+    mock_gettext_install.side_effect = ImportError()
+    # Test our fall back to not supporting translations
+    reload(AppriseLocale)
 
 
 def test_notify_matrix_dynamic_importing(tmpdir):

@@ -69,6 +69,8 @@ setup(
             'assets/NotifyXML-1.0.xsd',
             'assets/themes/default/*.png',
             'assets/themes/default/*.ico',
+            'i18n/*.py',
+            'i18n/*/LC_MESSAGES/*.mo',
         ],
     },
     install_requires=install_requires,
